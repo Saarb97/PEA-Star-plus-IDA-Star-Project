@@ -8,3 +8,13 @@ __pycache__/
 /misc/.tox/
 /misc/autodoc/downward-xmlrpc.secret
 /tests/trash/
+/01302-MessaF.pdf
+/failed_jobs.txt
+/jobs_*.txt
+/logs/
+/report1.md
+/report2.md
+/tests/baseline_processed_results/
+/tests/baseline_results/
+/tests/processed_results/
+/tests/results/
