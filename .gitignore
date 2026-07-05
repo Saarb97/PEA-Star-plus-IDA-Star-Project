@@ -18,3 +18,7 @@ __pycache__/
 /tests/baseline_results/
 /tests/processed_results/
 /tests/results/
+/generate_latex_table.py
+/future_directions.txt
+/memory_validation_report.md
+/tests/analysis/
