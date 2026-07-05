@@ -162,7 +162,7 @@ namespace pea_ida_search
                 }
             }
 
-            if (first_phase_open_queue.size() + generating_nodes_to_put_in_open.size() + min((long unsigned int)1, generating_nodes_to_re_compact.size()) > open_limit)
+            if (first_phase_open_queue.size() + first_phase_closed_hash.size() + generating_nodes_to_put_in_open.size() + min((long unsigned int)1, generating_nodes_to_re_compact.size()) > open_limit)
             {
                 print_infos_about_big_f_values_at_phase_transition();
                 print_infos_about_depths_at_phase_transition();

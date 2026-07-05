@@ -2249,6 +2249,10 @@ public:
     return *this;
   }
 
+  template <class... Args> void construct(Args &&... args) noexcept {
+    m_value = std::addressof(std::forward<Args>(args)...);
+  }
+
   /// Constructs the value in-place, destroying the current one if there is
   /// one.
   ///
