@@ -24,7 +24,8 @@ namespace pea_ida_search
 {
     PeaIdaSearch::PeaIdaSearch(const Options &opts)
         : SearchEngine(opts),
-          h_evaluator(opts.get<shared_ptr<Evaluator>>("eval"))
+          h_evaluator(opts.get<shared_ptr<Evaluator>>("eval")),
+          tt_size(opts.get<int>("tt_size"))
     {
     }
 
@@ -53,6 +54,11 @@ namespace pea_ida_search
         number_of_second_phase_generations = 0;
         number_of_second_phase_transitions = 0;
         expanding = false;
+
+        if (tt_size > 0)
+        {
+            transposition_table.assign(tt_size, TTEntry());
+        }
     }
 
     void PeaIdaSearch::print_statistics() const
@@ -74,6 +80,7 @@ namespace pea_ida_search
         {
             return second_phase_step();
         }
+        return IN_PROGRESS;
     }
 
     SearchStatus PeaIdaSearch::first_phase_step()
@@ -288,9 +295,40 @@ namespace pea_ida_search
                     return IN_PROGRESS;
                 }
 
-                EvaluationContext eval_context(successor_state, successor_g_value, false, &statistics);
-                int successor_h_value = eval_context.get_evaluator_value_or_infinity(h_evaluator.get());
-                statistics.inc_evaluated_states();
+                // 1. Static Perimeter Pruning (prune against frozen Phase 1 frontier)
+                if (first_phase_closed_hash.find(successor_state_id) != first_phase_closed_hash.end() &&
+                    first_phase_closed_hash[successor_state_id] <= successor_g_value)
+                {
+                    return IN_PROGRESS;
+                }
+                if (first_phase_open_queue_hash.find(successor_state_id) != first_phase_open_queue_hash.end() &&
+                    first_phase_open_queue_hash[successor_state_id].first <= successor_g_value)
+                {
+                    return IN_PROGRESS;
+                }
+
+                // 2. Transposition Table Lookup
+                int successor_h_value = -1;
+                if (tt_size > 0)
+                {
+                    size_t tt_idx = successor_state_id.value % tt_size;
+                    const auto &entry = transposition_table[tt_idx];
+                    if (entry.state_id == successor_state_id)
+                    {
+                        if (entry.f_limit >= second_phase_initial_node.big_f_value && entry.g_value <= successor_g_value)
+                        {
+                            return IN_PROGRESS; // Dominated duplicate path
+                        }
+                        successor_h_value = entry.h_value; // Reuse cached heuristic
+                    }
+                }
+
+                if (successor_h_value == -1)
+                {
+                    EvaluationContext eval_context(successor_state, successor_g_value, false, &statistics);
+                    successor_h_value = eval_context.get_evaluator_value_or_infinity(h_evaluator.get());
+                    statistics.inc_evaluated_states();
+                }
 
                 if (successor_h_value == INT_MAX)
                 {
@@ -300,6 +338,22 @@ namespace pea_ida_search
                 if (successor_g_value + successor_h_value > second_phase_initial_node.big_f_value)
                 {
                     second_phase_initial_node_new_big_f_value = min(second_phase_initial_node_new_big_f_value, successor_g_value + successor_h_value);
+
+                    // Insert/Update TT entry when pruned by threshold
+                    if (tt_size > 0)
+                    {
+                        size_t tt_idx = successor_state_id.value % tt_size;
+                        auto &entry = transposition_table[tt_idx];
+                        if (entry.state_id != successor_state_id ||
+                            entry.f_limit < second_phase_initial_node.big_f_value ||
+                            entry.g_value > successor_g_value)
+                        {
+                            entry.state_id = successor_state_id;
+                            entry.g_value = successor_g_value;
+                            entry.f_limit = second_phase_initial_node.big_f_value;
+                            entry.h_value = successor_h_value;
+                        }
+                    }
                     return IN_PROGRESS;
                 }
 
@@ -307,6 +361,22 @@ namespace pea_ida_search
 
                 second_phase_generating_operators_proxy_ids.back()[successor_state_id] = applicable_operator_proxy.get_id();
                 expanding_hash[successor_state_id] = successor_g_value;
+
+                // Update TT entry for successfully searched node
+                if (tt_size > 0)
+                {
+                    size_t tt_idx = successor_state_id.value % tt_size;
+                    auto &entry = transposition_table[tt_idx];
+                    if (entry.state_id != successor_state_id ||
+                        entry.f_limit < second_phase_initial_node.big_f_value ||
+                        entry.g_value > successor_g_value)
+                    {
+                        entry.state_id = successor_state_id;
+                        entry.g_value = successor_g_value;
+                        entry.f_limit = second_phase_initial_node.big_f_value;
+                        entry.h_value = successor_h_value;
+                    }
+                }
 
                 return IN_PROGRESS;
             }
@@ -347,7 +417,7 @@ namespace pea_ida_search
             expanding_node = second_phase_open_queue.top();
             second_phase_open_queue.pop();
 
-            while (second_phase_predecessors_state_ids_values.size() > expanding_node.depth - second_phase_initial_node.depth)
+            while (second_phase_predecessors_state_ids_values.size() > static_cast<size_t>(expanding_node.depth - second_phase_initial_node.depth))
             {
                 second_phase_predecessors_state_ids_values.pop_back();
                 second_phase_generating_operators_proxy_ids.pop_back();
@@ -494,6 +564,7 @@ namespace pea_ida_search
 
     void add_options_to_parser(OptionParser &parser)
     {
+        parser.add_option<int>("tt_size", "size of the transposition table for Phase 2 (0 to disable)", "1000000");
         SearchEngine::add_pruning_option(parser);
         SearchEngine::add_options_to_parser(parser);
     }

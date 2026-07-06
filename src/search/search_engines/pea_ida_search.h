@@ -9,6 +9,7 @@
 
 #include <unordered_map>
 #include <optional>
+#include <climits>
 
 class Evaluator;
 
@@ -98,6 +99,21 @@ namespace pea_ida_search
         typedef std::unordered_map<StateID, std::pair<int, FBestQueue::handle_type>> FBestQueueHash;
         typedef std::unordered_map<StateID, FBestQueue::handle_type> FBestQueueSingleHash;
         typedef std::unordered_map<StateID, int> Hash;
+
+        struct TTEntry
+        {
+            StateID state_id;
+            int g_value;
+            int f_limit;
+            int h_value;
+
+            TTEntry() : state_id(-1, true), g_value(INT_MAX), f_limit(-1), h_value(-1)
+            {
+            }
+        };
+
+        int tt_size;
+        std::vector<TTEntry> transposition_table;
 
         Phase current_phase;
         bool second_phase_needed;
