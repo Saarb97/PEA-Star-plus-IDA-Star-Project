@@ -25,7 +25,10 @@ namespace pea_ida_search
     PeaIdaSearch::PeaIdaSearch(const Options &opts)
         : SearchEngine(opts),
           h_evaluator(opts.get<shared_ptr<Evaluator>>("eval")),
-          tt_size(opts.get<int>("tt_size"))
+          tt_size(opts.get<int>("tt_size")),
+          bound_closed_list(opts.get<bool>("bound_closed_list")),
+          closed_list_divisor(opts.get<int>("closed_list_divisor")),
+          perimeter_pruning(opts.get<bool>("perimeter_pruning"))
     {
     }
 
@@ -169,7 +172,13 @@ namespace pea_ida_search
                 }
             }
 
-            if (first_phase_open_queue.size() + first_phase_closed_hash.size() + generating_nodes_to_put_in_open.size() + min((long unsigned int)1, generating_nodes_to_re_compact.size()) > open_limit)
+            long unsigned int current_size = first_phase_open_queue.size();
+            if (bound_closed_list)
+            {
+                current_size += first_phase_closed_hash.size() / max(1, closed_list_divisor);
+            }
+
+            if (current_size + generating_nodes_to_put_in_open.size() + min((long unsigned int)1, generating_nodes_to_re_compact.size()) > open_limit)
             {
                 print_infos_about_big_f_values_at_phase_transition();
                 print_infos_about_depths_at_phase_transition();
@@ -296,15 +305,18 @@ namespace pea_ida_search
                 }
 
                 // 1. Static Perimeter Pruning (prune against frozen Phase 1 frontier)
-                if (first_phase_closed_hash.find(successor_state_id) != first_phase_closed_hash.end() &&
-                    first_phase_closed_hash[successor_state_id] <= successor_g_value)
+                if (perimeter_pruning)
                 {
-                    return IN_PROGRESS;
-                }
-                if (first_phase_open_queue_hash.find(successor_state_id) != first_phase_open_queue_hash.end() &&
-                    first_phase_open_queue_hash[successor_state_id].first <= successor_g_value)
-                {
-                    return IN_PROGRESS;
+                    if (first_phase_closed_hash.find(successor_state_id) != first_phase_closed_hash.end() &&
+                        first_phase_closed_hash[successor_state_id] <= successor_g_value)
+                    {
+                        return IN_PROGRESS;
+                    }
+                    if (first_phase_open_queue_hash.find(successor_state_id) != first_phase_open_queue_hash.end() &&
+                        first_phase_open_queue_hash[successor_state_id].first <= successor_g_value)
+                    {
+                        return IN_PROGRESS;
+                    }
                 }
 
                 // 2. Transposition Table Lookup
@@ -565,6 +577,9 @@ namespace pea_ida_search
     void add_options_to_parser(OptionParser &parser)
     {
         parser.add_option<int>("tt_size", "size of the transposition table for Phase 2 (0 to disable)", "1000000");
+        parser.add_option<bool>("bound_closed_list", "count the closed list size against the memory limit", "true");
+        parser.add_option<int>("closed_list_divisor", "divisor for closed list size check to simulate compression", "1");
+        parser.add_option<bool>("perimeter_pruning", "prune Phase 2 search against Phase 1 perimeter", "true");
         SearchEngine::add_pruning_option(parser);
         SearchEngine::add_options_to_parser(parser);
     }

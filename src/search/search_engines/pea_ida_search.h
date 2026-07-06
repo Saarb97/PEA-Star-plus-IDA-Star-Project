@@ -114,6 +114,9 @@ namespace pea_ida_search
 
         int tt_size;
         std::vector<TTEntry> transposition_table;
+        bool bound_closed_list;
+        int closed_list_divisor;
+        bool perimeter_pruning;
 
         Phase current_phase;
         bool second_phase_needed;
